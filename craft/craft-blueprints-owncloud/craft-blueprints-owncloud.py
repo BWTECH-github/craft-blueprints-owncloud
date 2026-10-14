@@ -5,9 +5,11 @@ from CraftCore import CraftCore
 
 class subinfo(info.infoclass):
     def setTargets(self):
-        for ver in ["master", "6", "5"]:
-            self.svnTargets[ver] = f"[git]https://github.com/owncloud/craft-blueprints-owncloud.git|{ver}|"
-        self.defaultTarget = "master"
+        # owncloud.online: Blueprints aus dem eigenen Fork. "bwtech" trägt die
+        # Produktidentität (owncloud/owncloud-client), "master" folgt upstream.
+        for ver in ["bwtech", "master"]:
+            self.svnTargets[ver] = f"[git]https://github.com/BWTECH-github/craft-blueprints-owncloud.git|{ver}|"
+        self.defaultTarget = "bwtech"
 
     def setDependencies(self):
         self.buildDependencies["craft/craft-core"] = "default"

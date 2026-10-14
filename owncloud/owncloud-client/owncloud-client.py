@@ -25,9 +25,12 @@ class subinfo(info.infoclass):
             gitUrl="[git]https://github.com/owncloud/client",
         )
 
-        self.description = "ownCloud Desktop Client"
-        self.displayName = "ownCloud"
-        self.webpage = "https://github.com/owncloud/client"
+        # owncloud.online: displayName wird in craft zu "productname" und bestimmt damit
+        # Programmname, Installationsordner, Startmenü-Ordner, Verknüpfung und die
+        # Schlüssel Software\<company>\<productname> und ...\Uninstall\<productname>.
+        self.description = "owncloud.online Desktop Client"
+        self.displayName = "owncloud.online"
+        self.webpage = "https://owncloud.online"
 
     def setDependencies(self):
         self.buildDependencies["craft/craft-blueprints-owncloud"] = None
@@ -106,13 +109,16 @@ class Package(CMakePackageBase):
         else:
             return fallback
 
+    # owncloud.online: Rückfallwerte = APPLICATION_EXECUTABLE/APPLICATION_SHORTNAME aus
+    # OWNCLOUD.cmake des Clients. Sie bestimmen das Ziel der Startmenü-Verknüpfung
+    # (bin\owncloud.online.exe), das macOS-Bundle und die .desktop-Datei des AppImage.
     @property
     def applicationExecutable(self):
-        return self._get_env_vars("ApplicationExecutable", "APPLICATION_EXECUTABLE", fallback="owncloud")
+        return self._get_env_vars("ApplicationExecutable", "APPLICATION_EXECUTABLE", fallback="owncloud.online")
 
     @property
     def applicationShortname(self):
-        return self._get_env_vars("ApplicationShortname", "APPLICATION_SHORTNAME", fallback="owncloud")
+        return self._get_env_vars("ApplicationShortname", "APPLICATION_SHORTNAME", fallback="owncloud.online")
 
     def fetch(self):
         if self.subinfo.options.dynamic.buildVfsWin:
@@ -255,11 +261,26 @@ class Package(CMakePackageBase):
         self.defines["appname"] = self.applicationExecutable
         self.defines["appimage_native_package_name"] = f'{self.applicationShortname.lower().replace("_", "-")}-client'
         self.defines["apppath"] = "Applications/KDE/" + self.applicationExecutable + ".app"
-        self.defines["company"] = "ownCloud GmbH"
+        self.defines["company"] = "BW-Tech GmbH"
 
         exePath = f"{self.defines['appname']}{CraftCore.compiler.executableSuffix}"
         if isinstance(self, NullsoftInstallerPackager):
             exePath = f"bin/{exePath}"
+            # owncloud.online: eigene NSIS-Ergänzungen (owncloud-online.nsh). @{nsis_include}
+            # steht in der craft-Vorlage vor "Section Uninstall" - nur dort kann der
+            # Aufräumlauf noch auf die Client-exe zugreifen; @{un_sections} folgt erst
+            # nach dem Löschen der Dateien. Das Nsis-Verzeichnis von craft (process.nsh)
+            # bindet craft unabhängig davon über @{nsis_include_internal} ein.
+            clientExe = "$INSTDIR\\" + exePath.replace("/", "\\")
+            self.defines["nsis_include"] = "\n".join(
+                [
+                    f'!define OCO_PRODUCT "{self.subinfo.displayName}"',
+                    f'!define OCO_COMPANY "{self.defines["company"]}"',
+                    f'!define OCO_CLIENT_EXE "{clientExe}"',
+                    f'!include /CHARSET=UTF8 "{Path(self.blueprintDir()) / "owncloud-online.nsh"}"',
+                ]
+            )
+            self.defines["un_sections"] = "!insertmacro OCO_UNINSTALL_VENDOR_KEY"
         self.defines["shortcuts"] = [
             {
                 "name": self.subinfo.displayName,
@@ -275,7 +296,10 @@ class Package(CMakePackageBase):
         if ver:
             self.defines["version"] = ver
 
-        self.addExecutableFilter(r"(bin|libexec)/(?!(" + self.applicationExecutable + r")).*")
+        # owncloud.online: nur eigene Programme ausliefern. Der Name wird maskiert (der Punkt
+        # in "owncloud.online" wäre sonst ein Joker); owncloudcmd passte bisher nur als
+        # Präfix zum alten Rückfallnamen "owncloud" und wird deshalb ausdrücklich erlaubt.
+        self.addExecutableFilter(r"(bin|libexec)/(?!(" + re.escape(self.applicationExecutable) + r"|owncloudcmd)).*")
         self.ignoredPackages += ["binary/mysql"]
         if not CraftCore.compiler.isLinux:
             self.ignoredPackages += ["libs/dbus"]
